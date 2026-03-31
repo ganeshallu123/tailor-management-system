@@ -123,7 +123,7 @@
     let customers = [];
     
     // Shop currency global
-    const currency = "{{ current_user.currency_symbol|default('$') }}";
+    const currency = "₹";
 
     document.addEventListener('DOMContentLoaded', () => {
         loadCustomers();
@@ -153,10 +153,16 @@
         // Let's seed defaults if empty
         if(itemsCatalog.length === 0) {
             itemsCatalog = [
-                {id: 1, name: 'Shirt', default_price: 30},
-                {id: 2, name: 'Pant', default_price: 40},
-                {id: 3, name: 'Suit', default_price: 150}
+                {id: 1, name: 'Shirt', default_price: 500, icon: 'ph-t-shirt'},
+                {id: 2, name: 'Pant', default_price: 600, icon: 'ph-pants'},
+                {id: 3, name: 'Suit', default_price: 2500, icon: 'ph-coat-hanger'},
+                {id: 4, name: 'Coat', default_price: 1500, icon: 'ph-user'},
+                {id: 5, name: 'Kurta Pajama', default_price: 800, icon: 'ph-t-shirt'},
+                {id: 6, name: 'Sherwani', default_price: 3500, icon: 'ph-users'}
             ];
+            
+            // Auto add these to backend if first time
+            itemsCatalog.forEach(i => apiPost('/api/items', i));
         }
         renderCatalog();
     }
@@ -164,12 +170,30 @@
     function renderCatalog() {
         const catalogDiv = document.getElementById('item-catalog');
         catalogDiv.innerHTML = itemsCatalog.map(item => `
-            <div class="card text-center" style="cursor: pointer; border: 2px solid transparent;" onclick="toggleItem('${item.name}', ${item.default_price}, this)">
-                <i class="ph ph-t-shirt" style="font-size: 2rem; color: var(--primary-color);"></i>
-                <h4 class="mt-2">${item.name}</h4>
-                <p>${currency}${item.default_price}</p>
+            <div class="card text-center" style="cursor: pointer; border: 2px solid transparent; position: relative;">
+                <div onclick="toggleItem('${item.name}', ${item.default_price}, this.parentElement)">
+                    <i class="ph ${item.icon || 'ph-t-shirt'}" style="font-size: 2rem; color: var(--primary-color);"></i>
+                    <h4 class="mt-2">${item.name}</h4>
+                </div>
+                <div class="d-flex justify-center align-center gap-2 mt-2" style="background: rgba(212, 175, 55, 0.1); padding: 0.2rem; border-radius: var(--radius-md);">
+                    <span style="font-weight: 600;">${currency}${item.default_price}</span>
+                    <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem; border-radius: 5px;" onclick="editCatalogPrice(${item.id}, '${item.name}', ${item.default_price}, event)">
+                        <i class="ph ph-pencil-simple"></i> Edit
+                    </button>
+                </div>
             </div>
         `).join('');
+    }
+
+    async function editCatalogPrice(id, name, currentPrice, event) {
+        event.stopPropagation(); // prevent toggling the item
+        const newPrice = prompt(`Enter new default price for ${name}:`, currentPrice);
+        if(newPrice !== null && !isNaN(newPrice)) {
+            const priceVal = parseFloat(newPrice);
+            await apiPut('/api/items', {id: id, default_price: priceVal});
+            alert('Price updated successfully!');
+            loadCatalog(); // refresh catalog details
+        }
     }
 
     function toggleItem(name, price, element) {
@@ -210,19 +234,26 @@
             `).join('');
 
             container.innerHTML += `
-                <div class="card mb-4" style="background-color: var(--background-dark);">
+                <div class="card mb-4" style="background-color: var(--surface-light); border-color: rgba(212, 175, 55, 0.3);">
                     <div class="d-flex justify-between align-center mb-2">
-                        <h4 style="margin:0;">${item.name}</h4>
+                        <h4 style="margin:0; color: var(--secondary-color);">${item.name}</h4>
                         <div class="d-flex align-center gap-2">
-                            <span>Qty: <input type="number" class="form-control" value="1" min="1" id="qty-${index}" style="width: 60px; padding: 0.2rem;"></span>
-                            <span>Price: <input type="number" class="form-control" value="${item.price}" id="price-${index}" style="width: 80px; padding: 0.2rem;"></span>
+                            <span>Qty: <input type="number" class="form-control" value="1" min="1" id="qty-${index}" style="width: 70px; padding: 0.35rem;"></span>
+                            <span>Price: <input type="number" class="form-control" value="${item.price}" id="price-${index}" style="width: 90px; padding: 0.35rem;"></span>
                         </div>
                     </div>
                     <div class="grid grid-cols-2" style="gap: 1rem;">
                         ${fieldsHtml}
                     </div>
+                    
+                    <div class="mt-4 p-4" style="background: rgba(0,0,0,0.2); border-radius: var(--radius-md); border: 1px dashed rgba(212, 175, 55, 0.5);">
+                        <label class="form-label text-primary"><i class="ph ph-image"></i> Upload Fabric Sample (Optional)</label>
+                        <input type="file" id="fabric-${index}" class="form-control" accept="image/*" style="padding: 0.5rem; cursor: pointer;">
+                        <small class="text-muted">Take a photo of the fabric to attach to this item.</small>
+                    </div>
+
                     <div class="mt-2 text-right">
-                        <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;" onclick="addExtraField(${index})">+ Add Custom Field</button>
+                        <button class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" onclick="addExtraField(${index})">+ Add Custom Field</button>
                         <div id="extra-fields-${index}" class="mt-2 text-left"></div>
                     </div>
                 </div>
@@ -354,7 +385,24 @@
         document.getElementById('btn-submit').disabled = true;
 
         try {
-            const res = await apiPost('/api/orders', orderData);
+            // Build FormData for file uploads
+            const formData = new FormData();
+            formData.append('data', JSON.stringify(orderData));
+            
+            // Append fabric images
+            selectedItems.forEach((item, index) => {
+                const fileInput = document.getElementById(`fabric-${index}`);
+                if(fileInput && fileInput.files.length > 0) {
+                    formData.append(`image_${index}`, fileInput.files[0]);
+                }
+            });
+
+            const response = await fetch('/api/orders', {
+                method: 'POST',
+                body: formData
+            });
+            const res = await response.json();
+            
             if(res.success) {
                 // Generate WA url
                 const waMessage = `Hi ${orderData.customer_name},\nYour order #${res.order_id} has been received.\nTotal: ${currency}${billing.total}\nPaid: ${currency}${billing.paid}\nDue: ${currency}${billing.due}\nDelivery: ${orderData.delivery_date}\nThank you!`;
@@ -365,6 +413,8 @@
                 
                 // Fallback redirect if WA popup fails
                 setTimeout(() => window.location.href = '/', 2000);
+            } else {
+                throw new Error("API returned failure");
             }
         } catch(err) {
             alert("Error creating order.");

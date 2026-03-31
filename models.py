@@ -12,7 +12,7 @@ class Shop(db.Model, UserMixin):
     phone = db.Column(db.String(20), nullable=True)
     shop_name = db.Column(db.String(200), nullable=True)
     shop_address = db.Column(db.Text, nullable=True)
-    currency_symbol = db.Column(db.String(10), default='$')
+    currency_symbol = db.Column(db.String(10), default='₹')
     tax_settings = db.Column(db.Float, default=0.0) # percentage
     is_setup_complete = db.Column(db.Boolean, default=False)
     
@@ -52,6 +52,7 @@ class OrderItem(db.Model):
     item_name = db.Column(db.String(100), nullable=False) # e.g. Shirt, Pant
     quantity = db.Column(db.Integer, default=1)
     price = db.Column(db.Float, default=0.0)
+    fabric_image = db.Column(db.String(255), nullable=True) # path to image
     
     measurements = db.relationship('Measurement', backref='order_item', lazy=True, cascade='all, delete-orphan')
 

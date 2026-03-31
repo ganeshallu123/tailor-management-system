@@ -3,6 +3,8 @@ from datetime import datetime
 from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+import json
 from models import db, Shop, Customer, Order, OrderItem, Measurement, Payment, ItemTemplate
 
 app = Flask(__name__)
@@ -11,6 +13,8 @@ app.config['SECRET_KEY'] = 'dev-secret-key-tailor-app'
 # Use SQLite for local development
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tailor.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db.init_app(app)
 
@@ -87,6 +91,26 @@ def setup():
         
     return render_template('setup.html')
 
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    if request.method == 'POST':
+        current_user.owner_name = request.form.get('owner_name')
+        current_user.phone = request.form.get('phone')
+        current_user.shop_name = request.form.get('shop_name')
+        current_user.shop_address = request.form.get('shop_address')
+        current_user.currency_symbol = request.form.get('currency_symbol', '₹')
+        
+        tax = request.form.get('tax_settings')
+        if tax:
+            current_user.tax_settings = float(tax)
+            
+        db.session.commit()
+        flash('Shop settings updated successfully!', 'success')
+        return redirect(url_for('settings'))
+        
+    return render_template('settings.html')
+
 @app.route('/')
 @login_required
 def index():
@@ -123,11 +147,16 @@ def api_orders():
         return jsonify(result)
         
     # POST order creation
-    data = request.json
+    data_str = request.form.get('data')
+    if data_str:
+        data = json.loads(data_str)
+    else:
+        data = request.json or {}
+        
     customer_id = data.get('customer_id')
     if not customer_id:
         # Create new customer
-        customer = Customer(name=data['customer_name'], phone=data['customer_phone'], address=data.get('customer_address'))
+        customer = Customer(name=data.get('customer_name', ''), phone=data.get('customer_phone', ''), address=data.get('customer_address', ''))
         db.session.add(customer)
         db.session.commit()
         customer_id = customer.id
@@ -142,17 +171,27 @@ def api_orders():
         due=data.get('due', 0),
         notes=data.get('notes', ''),
     )
-    if 'delivery_date' in data and data['delivery_date']:
+    if data.get('delivery_date'):
         order.delivery_date = datetime.strptime(data['delivery_date'], '%Y-%m-%d')
-    if 'trial_date' in data and data['trial_date']:
+    if data.get('trial_date'):
         order.trial_date = datetime.strptime(data['trial_date'], '%Y-%m-%d')
 
     db.session.add(order)
     db.session.commit()
     
-    # Save Items
-    for item in data.get('items', []):
+    # Save Items & Handle Uploaded Images
+    for index, item in enumerate(data.get('items', [])):
         order_item = OrderItem(order_id=order.id, item_name=item['name'], quantity=item['quantity'], price=item['price'])
+        
+        # Check for image file in form data
+        file_key = f'image_{index}'
+        if file_key in request.files:
+            file = request.files[file_key]
+            if file and file.filename != '':
+                filename = secure_filename(f"order_{order.id}_item_{index}_{file.filename}")
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                order_item.fabric_image = f"uploads/{filename}"
+
         db.session.add(order_item)
         db.session.commit()
         
@@ -165,7 +204,9 @@ def api_orders():
         db.session.add(Payment(order_id=order.id, amount=data['paid'], payment_mode=data.get('payment_mode', 'Cash')))
         
     db.session.commit()
-    return jsonify({'success': True, 'order_id': order.id, 'customer_phone': data.get('customer_phone') or Customer.query.get(customer_id).phone}), 201
+    
+    cust = Customer.query.get(customer_id)
+    return jsonify({'success': True, 'order_id': order.id, 'customer_phone': cust.phone if cust else ''}), 201
 
 @app.route('/api/customers', methods=['GET'])
 @login_required
@@ -179,12 +220,21 @@ def api_customers():
         res.append({'id': c.id, 'name': c.name, 'phone': c.phone, 'address': c.address})
     return jsonify(res)
 
-@app.route('/api/items', methods=['GET', 'POST'])
+@app.route('/api/items', methods=['GET', 'POST', 'PUT'])
 @login_required
 def api_items():
     if request.method == 'GET':
         items = ItemTemplate.query.all()
         return jsonify([{'id': i.id, 'name': i.name, 'category': i.category, 'default_price': i.default_price} for i in items])
+        
+    if request.method == 'PUT':
+        data = request.json
+        item = ItemTemplate.query.get(data['id'])
+        if item:
+            item.default_price = data.get('default_price', item.default_price)
+            db.session.commit()
+            return jsonify({'success': True}), 200
+        return jsonify({'success': False}), 404
         
     # POST to add reusable item
     data = request.json

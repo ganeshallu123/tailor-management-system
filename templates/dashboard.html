@@ -79,9 +79,9 @@
                         </p>
                     </div>
                     <div class="text-right">
-                        <div style="font-weight: 700;">{{ current_user.currency_symbol|default('$') }}${o.total}</div>
+                        <div style="font-weight: 700;">{{ current_user.currency_symbol|default('₹') }}${o.total}</div>
                         <div style="color: ${o.due > 0 ? 'var(--danger)' : 'var(--success)'}; font-size: 0.8rem;">
-                            ${o.due > 0 ? 'Due: {{ current_user.currency_symbol|default("$") }}' + o.due : 'Paid'}
+                            ${o.due > 0 ? 'Due: {{ current_user.currency_symbol|default("₹") }}' + o.due : 'Paid'}
                         </div>
                     </div>
                 </div>
