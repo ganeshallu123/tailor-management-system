@@ -38,6 +38,23 @@
     </a>
 </div>
 
+<!-- Order Details Modal -->
+<div id="orderModal" class="modal-backdrop">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3><i class="ph ph-receipt"></i> Order Details</h3>
+            <button class="modal-close" onclick="closeModal()"><i class="ph ph-x"></i></button>
+        </div>
+        <div class="modal-body" id="modalBodyContent">
+            <!-- Populated via Javascript -->
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+            <div id="modalActions"></div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -71,9 +88,9 @@
             }
             
             container.innerHTML = data.map(o => `
-                <div class="card animate-fade d-flex justify-between align-center">
+                <div class="card animate-fade d-flex justify-between align-center" style="cursor: pointer;" onclick="viewOrderDetails(${o.id})">
                     <div>
-                        <h4 style="margin-bottom: 0.2rem;">${o.customer_name}</h4>
+                        <h4 style="margin-bottom: 0.2rem; color: var(--secondary-color);">${o.customer_name}</h4>
                         <p class="text-muted" style="margin-bottom: 0.2rem; font-size: 0.9rem;">
                             <i class="ph ph-phone"></i> ${o.phone} | <i class="ph ph-calendar"></i> Delivery: ${o.delivery_date}
                         </p>
@@ -105,6 +122,120 @@
                  fetchOrders(activeTab);
              }, 300);
         });
+        
+        // Close modal on click outside
+        document.getElementById('orderModal').addEventListener('click', (e) => {
+            if(e.target.id === 'orderModal') {
+                closeModal();
+            }
+        });
     });
+
+    function closeModal() {
+        document.getElementById('orderModal').classList.remove('show');
+    }
+
+    async function viewOrderDetails(id) {
+        document.getElementById('orderModal').classList.add('show');
+        const modalBody = document.getElementById('modalBodyContent');
+        const modalActions = document.getElementById('modalActions');
+        
+        modalBody.innerHTML = '<div class="text-center p-4"><i class="ph ph-spinner ph-spin" style="font-size: 2rem;"></i> Loading details...</div>';
+        modalActions.innerHTML = '';
+
+        try {
+            const data = await apiGet('/api/orders/' + id);
+            
+            // Build Items UI
+            const itemsHtml = data.items.map(i => {
+                let mHtml = Object.keys(i.measurements).map(k => `
+                    <div style="background: rgba(255,255,255,0.05); padding: 0.5rem; border-radius: 4px; display: flex; justify-content: space-between;">
+                        <span class="text-muted">${k}:</span> 
+                        <span style="font-weight: 600; color: var(--secondary-color);">${i.measurements[k]}</span>
+                    </div>
+                `).join('');
+                
+                if (mHtml === '') {
+                    mHtml = `<div class="text-muted" style="grid-column: span 2; font-size: 0.9rem;"><i>No measurements provided for this item.</i></div>`;
+                }
+
+                let imgHtml = i.fabric_image ? `
+                    <div class="mt-2 text-center">
+                        <p class="text-muted" style="margin-bottom: 0.5rem; font-size: 0.85rem;"><i class="ph ph-image"></i> Fabric Snippet</p>
+                        <img src="/static/${i.fabric_image}" alt="Fabric Image" style="max-width: 100%; max-height: 150px; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
+                    </div>
+                ` : '';
+
+                return `
+                    <div class="card bg-light mb-4" style="padding: 1rem;">
+                        <div class="d-flex justify-between align-center mb-2" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5rem;">
+                            <strong style="font-size: 1.1rem; color: var(--secondary-color);">${i.item_name} <span class="text-muted" style="font-size: 0.8rem;">(x${i.quantity})</span></strong>
+                            <span>{{ current_user.currency_symbol|default('₹') }}${i.price}</span>
+                        </div>
+                        <div class="grid grid-cols-2 mt-2 gap-2">
+                            ${mHtml}
+                        </div>
+                        ${imgHtml}
+                    </div>
+                `;
+            }).join('');
+
+            // Fill Modal HTML
+            modalBody.innerHTML = `
+                <div class="grid grid-cols-2 mb-4">
+                    <div>
+                        <h4 class="text-muted" style="font-size: 0.8rem; text-transform: uppercase;">Customer</h4>
+                        <div style="font-size: 1.1rem; font-weight: 600;">${data.customer_name}</div>
+                        <div class="text-muted"><i class="ph ph-phone"></i> ${data.phone}</div>
+                    </div>
+                    <div class="text-right">
+                        <h4 class="text-muted" style="font-size: 0.8rem; text-transform: uppercase;">Order Dates</h4>
+                        <div><strong>Order:</strong> ${data.order_date}</div>
+                        <div style="color: var(--secondary-color);"><strong>Delivery:</strong> ${data.delivery_date}</div>
+                    </div>
+                </div>
+                
+                <h4 class="mb-2" style="border-bottom: 1px solid rgba(212, 175, 55, 0.3); padding-bottom: 0.5rem;">Measurements & Items</h4>
+                ${itemsHtml}
+
+                <div class="mt-4 p-4" style="background: rgba(0,0,0,0.3); border-radius: var(--radius-md); border: 1px dashed var(--surface-border);">
+                    <div class="d-flex justify-between mb-2"><span>Subtotal:</span> <span>{{ current_user.currency_symbol|default('₹') }}${data.subtotal}</span></div>
+                    <div class="d-flex justify-between mb-2"><span>Tax:</span> <span>{{ current_user.currency_symbol|default('₹') }}${data.tax_amount}</span></div>
+                    <div class="d-flex justify-between mb-2"><span>Discount:</span> <span>-{{ current_user.currency_symbol|default('₹') }}${data.discount}</span></div>
+                    <div class="d-flex justify-between mb-2 mt-2" style="font-size: 1.2rem; font-weight: bold; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.5rem;">
+                        <span>Total:</span> <span style="color: var(--secondary-color);">{{ current_user.currency_symbol|default('₹') }}${data.total}</span>
+                    </div>
+                    <div class="d-flex justify-between mt-2" style="color: ${data.due > 0 ? 'var(--danger)' : 'var(--success)'}; font-weight: 600;">
+                        <span>Balance Due:</span> <span>{{ current_user.currency_symbol|default('₹') }}${data.due}</span>
+                    </div>
+                    ${data.notes ? `<div class="mt-2 text-muted" style="font-size: 0.9rem;"><strong>Notes:</strong> ${data.notes}</div>` : ''}
+                </div>
+            `;
+
+            // Actions mapping
+            if (data.status === 'Pending') {
+                modalActions.innerHTML = `<button class="btn btn-primary" onclick="updateOrderStatus(${data.id}, 'Complete')"><i class="ph ph-check-circle"></i> Mark as Complete</button>`;
+            } else if (data.status === 'Complete') {
+                modalActions.innerHTML = `<button class="btn btn-success" onclick="updateOrderStatus(${data.id}, 'Delivered')"><i class="ph ph-package"></i> Mark as Delivered</button>`;
+            }
+
+        } catch(err) {
+            console.error(err);
+            modalBody.innerHTML = '<div class="alert alert-error">Error loading order details.</div>';
+        }
+    }
+
+    async function updateOrderStatus(id, newStatus) {
+        if(!confirm(`Are you sure you want to mark this order as ${newStatus}?`)) return;
+        
+        try {
+            await apiPut('/api/orders/' + id, {status: newStatus});
+            closeModal();
+            const activeTab = document.querySelector('.tab.active').innerText.trim();
+            fetchOrders(activeTab); // refresh list
+        } catch(err) {
+            alert("Failed to update status");
+        }
+    }
 </script>
 {% endblock %}

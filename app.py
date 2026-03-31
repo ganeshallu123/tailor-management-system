@@ -208,6 +208,53 @@ def api_orders():
     cust = Customer.query.get(customer_id)
     return jsonify({'success': True, 'order_id': order.id, 'customer_phone': cust.phone if cust else ''}), 201
 
+@app.route('/api/orders/<int:order_id>', methods=['GET', 'PUT'])
+@login_required
+def api_order_detail(order_id):
+    order = Order.query.get_or_404(order_id)
+    
+    if request.method == 'PUT':
+        data = request.json
+        if 'status' in data:
+            order.status = data['status']
+            db.session.commit()
+            return jsonify({'success': True, 'status': order.status})
+        return jsonify({'success': False}), 400
+
+    # Build deeply nested response
+    details = {
+        'id': order.id,
+        'customer_name': order.customer.name,
+        'phone': order.customer.phone,
+        'address': order.customer.address or '',
+        'status': order.status,
+        'order_date': order.order_date.strftime('%Y-%m-%d'),
+        'trial_date': order.trial_date.strftime('%Y-%m-%d') if order.trial_date else 'N/A',
+        'delivery_date': order.delivery_date.strftime('%Y-%m-%d') if order.delivery_date else 'N/A',
+        'subtotal': order.subtotal,
+        'tax_amount': order.tax_amount,
+        'discount': order.discount,
+        'total': order.total,
+        'paid': order.paid,
+        'due': order.due,
+        'notes': order.notes or '',
+        'items': []
+    }
+    
+    for item in order.items:
+        i_dict = {
+            'item_name': item.item_name,
+            'quantity': item.quantity,
+            'price': item.price,
+            'fabric_image': item.fabric_image or '',
+            'measurements': {}
+        }
+        for m in item.measurements:
+            i_dict['measurements'][m.field_name] = m.field_value
+        details['items'].append(i_dict)
+        
+    return jsonify(details)
+
 @app.route('/api/customers', methods=['GET'])
 @login_required
 def api_customers():
