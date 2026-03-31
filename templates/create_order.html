@@ -1,0 +1,376 @@
+{% extends 'base.html' %}
+{% block title %}Create Order - Tailor Management System{% endblock %}
+
+{% block content %}
+<div class="card mt-4" style="max-width: 800px; margin: 2rem auto;">
+    <div class="d-flex justify-between align-center mb-4">
+        <h2>Create Order</h2>
+        <span id="step-indicator" class="text-muted">Step 1 of 5</span>
+    </div>
+
+    <!-- Step 1: Customer Details -->
+    <div id="step-1" class="step-container">
+        <h3>Customer Details</h3>
+        <p class="text-muted">Search existing customer or enter a new one.</p>
+        <div class="form-group" style="position: relative;">
+            <label class="form-label">Phone Number *</label>
+            <input type="text" id="cust-phone" class="form-control" placeholder="Search or add phone..." required>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Customer Name *</label>
+            <input type="text" id="cust-name" class="form-control" required placeholder="John Doe">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Address</label>
+            <textarea id="cust-address" class="form-control" rows="2"></textarea>
+            <input type="hidden" id="cust-id" value="">
+        </div>
+    </div>
+
+    <!-- Step 2: Select Items -->
+    <div id="step-2" class="step-container" style="display: none;">
+        <h3>Select Items</h3>
+        <p class="text-muted">Which items would you like to add to this order?</p>
+        <div class="grid grid-cols-3" id="item-catalog">
+            <!-- Populated by JS -->
+        </div>
+        <button class="btn btn-secondary mt-4" onclick="addCustomItem()">+ Add Custom Item</button>
+        <div id="selected-items-summary" class="mt-4" style="font-weight: 600;"></div>
+    </div>
+
+    <!-- Step 3: Measurements & Pricing -->
+    <div id="step-3" class="step-container" style="display: none;">
+        <h3>Measurements & Pricing</h3>
+        <div id="measurement-forms">
+            <!-- Populated by JS for each selected item -->
+        </div>
+    </div>
+
+    <!-- Step 4: Notes and Dates -->
+    <div id="step-4" class="step-container" style="display: none;">
+        <h3>Dates & Details</h3>
+        <div class="grid grid-cols-2">
+            <div class="form-group">
+                <label class="form-label">Trial Date</label>
+                <input type="date" id="trial-date" class="form-control">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Delivery Date *</label>
+                <input type="date" id="delivery-date" class="form-control" required>
+            </div>
+        </div>
+        <div class="form-group mt-2">
+            <label class="form-label">Order Notes</label>
+            <textarea id="order-notes" class="form-control" rows="3" placeholder="Special instructions..."></textarea>
+        </div>
+    </div>
+
+    <!-- Step 5: Billing & Summary -->
+    <div id="step-5" class="step-container" style="display: none;">
+        <h3>Billing Summary</h3>
+        <div class="card bg-light mt-2">
+            <div class="d-flex justify-between mb-2">
+                <span>Subtotal:</span>
+                <span id="bill-subtotal"></span>
+            </div>
+            <div class="d-flex justify-between mb-2 align-center">
+                <span>Tax Amount:</span>
+                <input type="number" id="bill-tax" class="form-control" style="width: 100px; padding: 0.25rem;" value="0" onchange="calculateTotal()">
+            </div>
+            <div class="d-flex justify-between mb-2 align-center">
+                <span>Discount:</span>
+                <input type="number" id="bill-discount" class="form-control" style="width: 100px; padding: 0.25rem;" value="0" onchange="calculateTotal()">
+            </div>
+            <hr class="mb-2 mt-2" style="border-top: 1px solid #CBD5E0;">
+            <div class="d-flex justify-between mb-2" style="font-weight: 700; font-size: 1.2rem;">
+                <span>Total:</span>
+                <span id="bill-total"></span>
+            </div>
+            <div class="d-flex justify-between mb-2 align-center mt-4">
+                <span>Advance Paid:</span>
+                <input type="number" id="bill-paid" class="form-control" style="width: 100px; padding: 0.25rem;" value="0" onchange="calculateTotal()">
+            </div>
+            <div class="d-flex justify-between mt-2" style="font-weight: 700; color: var(--danger);">
+                <span>Balance Due:</span>
+                <span id="bill-due"></span>
+            </div>
+            <div class="form-group mt-2">
+                <label class="form-label">Payment Mode</label>
+                <select id="payment-mode" class="form-control">
+                    <option value="Cash">Cash</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Card">Card</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-between mt-4 pb-2">
+        <button id="btn-prev" class="btn btn-secondary" onclick="prevStep()" style="display: none;">Back</button>
+        <div style="flex-grow: 1;"></div>
+        <button id="btn-next" class="btn btn-primary" onclick="nextStep()">Next Step <i class="ph ph-arrow-right"></i></button>
+        <button id="btn-submit" class="btn btn-success" onclick="submitOrder()" style="display: none; background-color: var(--success); color: white;">Submit & Generate Invoice</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentStep = 1;
+    const totalSteps = 5;
+    let selectedItems = []; // Array of objects {name, price, measurements: {}}
+    let itemsCatalog = [];
+    let customers = [];
+    
+    // Shop currency global
+    const currency = "{{ current_user.currency_symbol|default('$') }}";
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadCustomers();
+        loadCatalog();
+        
+        // Setup phone search auto-fill
+        const phoneInput = document.getElementById('cust-phone');
+        phoneInput.addEventListener('input', (e) => {
+            const val = e.target.value;
+            const match = customers.find(c => c.phone.replace(/\D/g,'') === val.replace(/\D/g,''));
+            if(match) {
+                document.getElementById('cust-name').value = match.name;
+                document.getElementById('cust-address').value = match.address || '';
+                document.getElementById('cust-id').value = match.id;
+            } else {
+                document.getElementById('cust-id').value = '';
+            }
+        });
+    });
+
+    async function loadCustomers() {
+        customers = await apiGet('/api/customers');
+    }
+
+    async function loadCatalog() {
+        itemsCatalog = await apiGet('/api/items');
+        // Let's seed defaults if empty
+        if(itemsCatalog.length === 0) {
+            itemsCatalog = [
+                {id: 1, name: 'Shirt', default_price: 30},
+                {id: 2, name: 'Pant', default_price: 40},
+                {id: 3, name: 'Suit', default_price: 150}
+            ];
+        }
+        renderCatalog();
+    }
+
+    function renderCatalog() {
+        const catalogDiv = document.getElementById('item-catalog');
+        catalogDiv.innerHTML = itemsCatalog.map(item => `
+            <div class="card text-center" style="cursor: pointer; border: 2px solid transparent;" onclick="toggleItem('${item.name}', ${item.default_price}, this)">
+                <i class="ph ph-t-shirt" style="font-size: 2rem; color: var(--primary-color);"></i>
+                <h4 class="mt-2">${item.name}</h4>
+                <p>${currency}${item.default_price}</p>
+            </div>
+        `).join('');
+    }
+
+    function toggleItem(name, price, element) {
+        element.style.borderColor = element.style.borderColor === 'transparent' ? 'var(--primary-color)' : 'transparent';
+        
+        const idx = selectedItems.findIndex(i => i.name === name);
+        if(idx > -1) {
+            selectedItems.splice(idx, 1);
+        } else {
+            selectedItems.push({name, price, quantity: 1, measurements: {}});
+        }
+        
+        document.getElementById('selected-items-summary').innerText = `Selected Items: ` + selectedItems.map(i => i.name).join(', ');
+    }
+
+    function addCustomItem() {
+        const name = prompt("Enter item name:");
+        if(name) {
+            const price = parseFloat(prompt("Enter price:", "0")) || 0;
+            toggleItem(name, price, document.createElement('div')); // fake element to push
+        }
+    }
+
+    function generateMeasurementForm() {
+        const container = document.getElementById('measurement-forms');
+        container.innerHTML = '';
+        
+        selectedItems.forEach((item, index) => {
+            // Very simple common fields based on item name (could be dynamic in real system)
+            let defaultFields = ['Length', 'Chest', 'Waist', 'Shoulder', 'Sleeve'];
+            if(item.name.toLowerCase().includes('pant')) defaultFields = ['Length', 'Waist', 'Hip', 'Bottom'];
+            
+            let fieldsHtml = defaultFields.map(f => `
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                    <label class="form-label" style="font-size: 0.8rem; margin:0;">${f}</label>
+                    <input type="text" class="form-control m-val-${index}" data-key="${f}" placeholder="${f} measurement..." style="padding: 0.4rem;">
+                </div>
+            `).join('');
+
+            container.innerHTML += `
+                <div class="card mb-4" style="background-color: var(--background-dark);">
+                    <div class="d-flex justify-between align-center mb-2">
+                        <h4 style="margin:0;">${item.name}</h4>
+                        <div class="d-flex align-center gap-2">
+                            <span>Qty: <input type="number" class="form-control" value="1" min="1" id="qty-${index}" style="width: 60px; padding: 0.2rem;"></span>
+                            <span>Price: <input type="number" class="form-control" value="${item.price}" id="price-${index}" style="width: 80px; padding: 0.2rem;"></span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2" style="gap: 1rem;">
+                        ${fieldsHtml}
+                    </div>
+                    <div class="mt-2 text-right">
+                        <button class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.8rem;" onclick="addExtraField(${index})">+ Add Custom Field</button>
+                        <div id="extra-fields-${index}" class="mt-2 text-left"></div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+
+    function addExtraField(itemIndex) {
+        const fieldName = prompt("Enter measurement name (e.g., Cuffs, Pocket style):");
+        if(fieldName) {
+            const div = document.getElementById(`extra-fields-${itemIndex}`);
+            div.innerHTML += `
+                <div class="form-group" style="margin-bottom: 0.5rem;">
+                    <label class="form-label" style="font-size: 0.8rem; margin:0;">${fieldName}</label>
+                    <input type="text" class="form-control m-val-${itemIndex}" data-key="${fieldName}" placeholder="${fieldName} value..." style="padding: 0.4rem;">
+                </div>
+            `;
+        }
+    }
+
+    function calculateTotal() {
+        let subtotal = 0;
+        selectedItems.forEach((item, index) => {
+            const qty = document.getElementById(`qty-${index}`) ? parseFloat(document.getElementById(`qty-${index}`).value) || 1 : item.quantity;
+            const price = document.getElementById(`price-${index}`) ? parseFloat(document.getElementById(`price-${index}`).value) || 0 : item.price;
+            subtotal += qty * price;
+            
+            // Save them back
+            item.quantity = qty;
+            item.price = price;
+        });
+
+        const tax = parseFloat(document.getElementById('bill-tax').value) || 0;
+        const discount = parseFloat(document.getElementById('bill-discount').value) || 0;
+        const paid = parseFloat(document.getElementById('bill-paid').value) || 0;
+
+        const total = subtotal + tax - discount;
+        const due = total - paid;
+
+        document.getElementById('bill-subtotal').innerText = currency + subtotal.toFixed(2);
+        document.getElementById('bill-total').innerText = currency + total.toFixed(2);
+        document.getElementById('bill-due').innerText = currency + due.toFixed(2);
+        
+        return { subtotal, tax, discount, total, paid, due };
+    }
+
+    function nextStep() {
+        // Validation per step can go here
+        if(currentStep === 1) {
+            if(!document.getElementById('cust-name').value || !document.getElementById('cust-phone').value) {
+                alert("Please fill customer details.");
+                return;
+            }
+        }
+        if(currentStep === 2) {
+            if(selectedItems.length === 0) {
+                alert("Please select at least one item.");
+                return;
+            }
+            generateMeasurementForm();
+        }
+        if(currentStep === 3) {
+            // Save measurements from forms to item objects
+            selectedItems.forEach((item, index) => {
+                const inputs = document.querySelectorAll(`.m-val-${index}`);
+                inputs.forEach(inp => {
+                    if(inp.value.trim() !== '') {
+                        item.measurements[inp.getAttribute('data-key')] = inp.value;
+                    }
+                });
+            });
+            calculateTotal(); // Calculate to update step 5 when reached
+        }
+        if(currentStep === 4) {
+             if(!document.getElementById('delivery-date').value) {
+                alert("Delivery date is required.");
+                return;
+            }
+            calculateTotal();
+        }
+
+        if(currentStep < totalSteps) {
+            document.getElementById(`step-${currentStep}`).style.display = 'none';
+            currentStep++;
+            document.getElementById(`step-${currentStep}`).style.display = 'block';
+            updateButtons();
+        }
+    }
+
+    function prevStep() {
+        if(currentStep > 1) {
+            document.getElementById(`step-${currentStep}`).style.display = 'none';
+            currentStep--;
+            document.getElementById(`step-${currentStep}`).style.display = 'block';
+            updateButtons();
+        }
+    }
+
+    function updateButtons() {
+        document.getElementById('step-indicator').innerText = `Step ${currentStep} of ${totalSteps}`;
+        document.getElementById('btn-prev').style.display = currentStep > 1 ? 'inline-block' : 'none';
+        
+        if(currentStep === totalSteps) {
+            document.getElementById('btn-next').style.display = 'none';
+            document.getElementById('btn-submit').style.display = 'inline-block';
+        } else {
+            document.getElementById('btn-next').style.display = 'inline-block';
+            document.getElementById('btn-submit').style.display = 'none';
+        }
+    }
+
+    async function submitOrder() {
+        const billing = calculateTotal();
+        
+        const orderData = {
+            customer_id: document.getElementById('cust-id').value || null,
+            customer_name: document.getElementById('cust-name').value,
+            customer_phone: document.getElementById('cust-phone').value,
+            customer_address: document.getElementById('cust-address').value,
+            items: selectedItems,
+            trial_date: document.getElementById('trial-date').value,
+            delivery_date: document.getElementById('delivery-date').value,
+            notes: document.getElementById('order-notes').value,
+            ...billing,
+            payment_mode: document.getElementById('payment-mode').value
+        };
+
+        document.getElementById('btn-submit').innerText = 'Saving...';
+        document.getElementById('btn-submit').disabled = true;
+
+        try {
+            const res = await apiPost('/api/orders', orderData);
+            if(res.success) {
+                // Generate WA url
+                const waMessage = `Hi ${orderData.customer_name},\nYour order #${res.order_id} has been received.\nTotal: ${currency}${billing.total}\nPaid: ${currency}${billing.paid}\nDue: ${currency}${billing.due}\nDelivery: ${orderData.delivery_date}\nThank you!`;
+                const finalWaLink = `https://wa.me/${res.customer_phone}?text=${encodeURIComponent(waMessage)}`;
+                
+                alert("Order created successfully! Redirecting to WhatsApp...");
+                window.location.href = finalWaLink;
+                
+                // Fallback redirect if WA popup fails
+                setTimeout(() => window.location.href = '/', 2000);
+            }
+        } catch(err) {
+            alert("Error creating order.");
+            document.getElementById('btn-submit').innerText = 'Submit & Generate Invoice';
+            document.getElementById('btn-submit').disabled = false;
+        }
+    }
+</script>
+{% endblock %}

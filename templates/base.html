@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Tailor Management System{% endblock %}</title>
+    
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    {% if current_user.is_authenticated and current_user.is_setup_complete %}
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="nav-brand">
+                <i class="ph ph-scissors"></i>
+                {% if shop %}{{ shop.shop_name or 'Tailor Pro' }}{% else %}Tailor Pro{% endif %}
+            </div>
+            <div class="nav-links">
+                <a href="{{ url_for('index') }}" class="btn btn-secondary" style="padding: 0.5rem 1rem;">Dashboard</a>
+                <a href="{{ url_for('logout') }}" title="Logout"><i class="ph ph-sign-out" style="font-size: 1.5rem; color: var(--text-muted)"></i></a>
+            </div>
+        </div>
+    </nav>
+    {% endif %}
+
+    <main class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'message' else 'info' }} animate-fade">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- App JavaScript -->
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

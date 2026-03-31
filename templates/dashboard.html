@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard - Tailor Management System{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-between align-center mb-4 mt-4">
+    <h2>Orders</h2>
+    <div style="position: relative;">
+        <i class="ph ph-magnifying-glass" style="position: absolute; left: 10px; top: 12px; color: var(--text-muted);"></i>
+        <input type="text" id="searchInput" class="form-control" placeholder="Search by name or phone..." style="padding-left: 35px; min-width: 250px;">
+    </div>
+</div>
+
+<div class="tabs">
+    <div class="tab active" onclick="filterOrders('Pending')">
+        <i class="ph ph-clock"></i> Pending
+    </div>
+    <div class="tab" onclick="filterOrders('Complete')">
+        <i class="ph ph-check-circle"></i> Complete
+    </div>
+    <div class="tab" onclick="filterOrders('Delivered')">
+        <i class="ph ph-package"></i> Delivered
+    </div>
+</div>
+
+<div id="ordersContainer">
+    <!-- Empty state UI initially, will be populated by JS -->
+    <div class="text-center" style="padding: 4rem 1rem;">
+        <i class="ph ph-clipboard-text" style="font-size: 4rem; color: #CBD5E0; margin-bottom: 1rem;"></i>
+        <h3 style="color: var(--text-muted);">No Record Found</h3>
+        <p>You don't have any orders here yet. Click the + button to create one.</p>
+    </div>
+</div>
+
+<!-- Floating Action Button -->
+<div class="fab-container">
+    <a href="{{ url_for('create_order') }}" class="fab" title="Create New Order">
+        <i class="ph ph-plus"></i>
+    </a>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function filterOrders(status) {
+        // Update tabs active state
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+        
+        // Fetch and render orders from API based on status 
+        fetchOrders(status);
+    }
+    
+    async function fetchOrders(status) {
+        const container = document.getElementById('ordersContainer');
+        const q = document.getElementById('searchInput').value;
+        const url = `/api/orders?status=${status}&q=${q}`;
+        
+        container.innerHTML = '<div class="text-center p-4">Loading...</div>';
+        try {
+            const data = await apiGet(url);
+            if(data.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center animate-fade" style="padding: 4rem 1rem;">
+                        <i class="ph ph-clipboard-text" style="font-size: 4rem; color: #CBD5E0; margin-bottom: 1rem;"></i>
+                        <h3 style="color: var(--text-muted);">No ${status} Records Found</h3>
+                        <p>There are no orders matching your criteria.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = data.map(o => `
+                <div class="card animate-fade d-flex justify-between align-center">
+                    <div>
+                        <h4 style="margin-bottom: 0.2rem;">${o.customer_name}</h4>
+                        <p class="text-muted" style="margin-bottom: 0.2rem; font-size: 0.9rem;">
+                            <i class="ph ph-phone"></i> ${o.phone} | <i class="ph ph-calendar"></i> Delivery: ${o.delivery_date}
+                        </p>
+                    </div>
+                    <div class="text-right">
+                        <div style="font-weight: 700;">{{ current_user.currency_symbol|default('$') }}${o.total}</div>
+                        <div style="color: ${o.due > 0 ? 'var(--danger)' : 'var(--success)'}; font-size: 0.8rem;">
+                            ${o.due > 0 ? 'Due: {{ current_user.currency_symbol|default("$") }}' + o.due : 'Paid'}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+        } catch(err) {
+            container.innerHTML = '<div class="alert alert-error">Error loading orders</div>';
+        }
+    }
+    
+    // Initial load
+    document.addEventListener('DOMContentLoaded', () => {
+        fetchOrders('Pending');
+        
+        // Setup search
+        let timeout = null;
+        document.getElementById('searchInput').addEventListener('input', () => {
+             clearTimeout(timeout);
+             timeout = setTimeout(() => {
+                 const activeTab = document.querySelector('.tab.active').innerText.trim();
+                 fetchOrders(activeTab);
+             }, 300);
+        });
+    });
+</script>
+{% endblock %}

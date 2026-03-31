@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Tailor Management System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <i class="ph ph-scissors" style="font-size: 3rem; color: var(--secondary-color); margin-bottom: 1rem;"></i>
+            <h2>Tailor Management</h2>
+            <p>Welcome back! Please login to your account.</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'message' else 'info' }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('login') }}">
+            <div class="form-group">
+                <label class="form-label" for="username">Username</label>
+                <input type="text" id="username" name="username" class="form-control" required placeholder="Enter your username" value="admin">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="password">Password</label>
+                <input type="password" id="password" name="password" class="form-control" required placeholder="Enter your password" value="admin">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block" style="margin-top: 1rem;">
+                <i class="ph ph-sign-in" style="vertical-align: middle; margin-right: 0.5rem;"></i> Login
+            </button>
+        </form>
+    </div>
+</body>
+</html>
